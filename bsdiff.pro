@@ -11,3 +11,5 @@ HEADERS += \
     bsdiff.h \
     bspatch.h \
     config.h
+
+QMAKE_CFLAGS += -DBSDIFF_EXECUTABLE

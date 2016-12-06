@@ -4,7 +4,7 @@
  * All rights reserved
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted providing that the following conditions 
+ * modification, are permitted providing that the following conditions
  * are met:
  * 1. Redistributions of source code must retain the above copyright
  *    notice, this list of conditions and the following disclaimer.
@@ -252,7 +252,7 @@ static int bsdiff_internal(const struct bsdiff_request req)
 				(req.old[scsc+lastoffset] == req.new[scsc]))
 				oldscore++;
 
-			if(((len==oldscore) && (len!=0)) || 
+			if(((len==oldscore) && (len!=0)) ||
 				(len>oldscore+8)) break;
 
 			if((scan+lastoffset<req.oldsize) &&
@@ -353,7 +353,6 @@ int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t news
 
 #include <sys/types.h>
 
-#include <bzlib.h>
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -362,29 +361,22 @@ int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t news
 
 static int bz2_write(struct bsdiff_stream* stream, const void* buffer, int size)
 {
-	int bz2err;
-	BZFILE* bz2;
-
-	bz2 = (BZFILE*)stream->opaque;
-	BZ2_bzWrite(&bz2err, bz2, (void*)buffer, size);
-	if (bz2err != BZ_STREAM_END && bz2err != BZ_OK)
-		return -1;
-
-	return 0;
+    FILE *fp = (FILE*) stream->opaque;
+    int written = fwrite(buffer, 1, size, fp);
+    if (written != size)
+        return -1;
+    return 0;
 }
 
 int main(int argc,char *argv[])
 {
 	int fd;
-	int bz2err;
 	uint8_t *old,*new;
 	off_t oldsize,newsize;
 	uint8_t buf[8];
 	FILE * pf;
 	struct bsdiff_stream stream;
-	BZFILE* bz2;
 
-	memset(&bz2, 0, sizeof(bz2));
 	stream.malloc = malloc;
 	stream.free = free;
 	stream.write = bz2_write;
@@ -414,23 +406,14 @@ int main(int argc,char *argv[])
 	if ((pf = fopen(argv[3], "w")) == NULL)
 		err(1, "%s", argv[3]);
 
-	/* Write header (signature+newsize)*/
+    /* Write header (newsize)*/
 	offtout(newsize, buf);
-	if (fwrite("ENDSLEY/BSDIFF43", 16, 1, pf) != 1 ||
-		fwrite(buf, sizeof(buf), 1, pf) != 1)
+    if (fwrite(buf, sizeof(buf), 1, pf) != 1)
 		err(1, "Failed to write header");
 
-
-	if (NULL == (bz2 = BZ2_bzWriteOpen(&bz2err, pf, 9, 0, 0)))
-		errx(1, "BZ2_bzWriteOpen, bz2err=%d", bz2err);
-
-	stream.opaque = bz2;
+    stream.opaque = pf;
 	if (bsdiff(old, oldsize, new, newsize, &stream))
 		err(1, "bsdiff");
-
-	BZ2_bzWriteClose(&bz2err, bz2, 0, NULL, NULL);
-	if (bz2err != BZ_OK)
-		err(1, "BZ2_bzWriteClose, bz2err=%d", bz2err);
 
 	if (fclose(pf))
 		err(1, "fclose");
