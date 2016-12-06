@@ -104,26 +104,26 @@ static void split(int64_t *I,int64_t *V,int64_t start,int64_t len,int64_t h)
     if(start+len>kk) split(I,V,kk,start+len-kk,h);
 }
 
-static void qsufsort(int64_t *I,int64_t *V,const uint8_t *old,int64_t oldsize) {
+static void qsufsort(int64_t *I,int64_t *V,const uint8_t *before,int64_t beforesize) {
     int64_t buckets[256];
 
     for(int64_t i=0; i<256; i++) buckets[i]=0;
-    for(int64_t i=0; i<oldsize; i++) buckets[old[i]]++;
+    for(int64_t i=0; i<beforesize; i++) buckets[before[i]]++;
     for(int64_t i=1; i<256; i++) buckets[i]+=buckets[i-1];
     for(int64_t i=255; i>0; i--) buckets[i]=buckets[i-1];
     buckets[0]=0;
 
-    for(int64_t i=0; i<oldsize; i++) I[++buckets[old[i]]]=i;
-    I[0]=oldsize;
-    for(int64_t i=0; i<oldsize; i++) V[i]=buckets[old[i]];
-    V[oldsize]=0;
+    for(int64_t i=0; i<beforesize; i++) I[++buckets[before[i]]]=i;
+    I[0]=beforesize;
+    for(int64_t i=0; i<beforesize; i++) V[i]=buckets[before[i]];
+    V[beforesize]=0;
     for(int64_t i=1; i<256; i++) if(buckets[i]==buckets[i-1]+1) I[buckets[i]]=-1;
     I[0]=-1;
 
-    for(int64_t h=1; I[0] != -(oldsize+1); h+=h) {
+    for(int64_t h=1; I[0] != -(beforesize+1); h+=h) {
         int64_t len=0;
         int64_t i;
-        for(i=0; i<oldsize+1;) {
+        for(i=0; i<beforesize+1;) {
             if(I[i]<0) {
                 len-=I[i];
                 i-=I[i];
@@ -138,23 +138,23 @@ static void qsufsort(int64_t *I,int64_t *V,const uint8_t *old,int64_t oldsize) {
         if(len) I[i-len]=-len;
     };
 
-    for(int64_t i=0; i<oldsize+1; i++) I[V[i]]=i;
+    for(int64_t i=0; i<beforesize+1; i++) I[V[i]]=i;
 }
 
-static int64_t matchlen(const uint8_t *old,int64_t oldsize,const uint8_t *new,int64_t newsize) {
+static int64_t matchlen(const uint8_t *before,int64_t beforesize,const uint8_t *after,int64_t aftersize) {
     int64_t i;
 
-    for(i=0; (i<oldsize)&&(i<newsize); i++)
-        if(old[i]!=new[i]) break;
+    for(i=0; (i<beforesize)&&(i<aftersize); i++)
+        if(before[i]!=after[i]) break;
 
     return i;
 }
 
-static int64_t search(const int64_t *I,const uint8_t *old,int64_t oldsize,
-                      const uint8_t *new,int64_t newsize,int64_t st,int64_t en,int64_t *pos) {
+static int64_t search(const int64_t *I,const uint8_t *before,int64_t beforesize,
+                      const uint8_t *after,int64_t aftersize,int64_t st,int64_t en,int64_t *pos) {
     if(en-st<2) {
-        int64_t x=matchlen(old+I[st],oldsize-I[st],new,newsize);
-        int64_t y=matchlen(old+I[en],oldsize-I[en],new,newsize);
+        int64_t x=matchlen(before+I[st],beforesize-I[st],after,aftersize);
+        int64_t y=matchlen(before+I[en],beforesize-I[en],after,aftersize);
 
         if(x>y) {
             *pos=I[st];
@@ -166,10 +166,10 @@ static int64_t search(const int64_t *I,const uint8_t *old,int64_t oldsize,
     };
 
     int64_t x=st+(en-st)/2;
-    if(memcmp(old+I[x],new,MIN(oldsize-I[x],newsize))<0) {
-        return search(I,old,oldsize,new,newsize,x,en,pos);
+    if(memcmp(before+I[x],after,MIN(beforesize-I[x],aftersize))<0) {
+        return search(I,before,beforesize,after,aftersize,x,en,pos);
     } else {
-        return search(I,old,oldsize,new,newsize,st,x,pos);
+        return search(I,before,beforesize,after,aftersize,st,x,pos);
     };
 }
 
@@ -224,10 +224,10 @@ static int64_t writedata(struct bsdiff_stream* stream, const void* buffer, int64
 }
 
 struct bsdiff_request {
-    const uint8_t* old;
-    int64_t oldsize;
-    const uint8_t* new;
-    int64_t newsize;
+    const uint8_t* before;
+    int64_t beforesize;
+    const uint8_t* after;
+    int64_t aftersize;
     struct bsdiff_stream* stream;
     int64_t *I;
     uint8_t *buffer;
@@ -235,12 +235,12 @@ struct bsdiff_request {
 
 static int bsdiff_internal(const struct bsdiff_request req)
 {
-    int64_t *V=req.stream->malloc((req.oldsize+1)*sizeof(int64_t));
+    int64_t *V=req.stream->malloc((req.beforesize+1)*sizeof(int64_t));
     if(V==NULL)
         return -1;
     int64_t *I = req.I;
 
-    qsufsort(I,V,req.old,req.oldsize);
+    qsufsort(I,V,req.before,req.beforesize);
     req.stream->free(V);
 
     uint8_t *buffer = req.buffer;
@@ -252,31 +252,31 @@ static int bsdiff_internal(const struct bsdiff_request req)
     int64_t lastscan=0;
     int64_t lastpos=0;
     int64_t lastoffset=0;
-    while(scan<req.newsize) {
-        int64_t oldscore=0;
-        for(int64_t scsc=scan+=len; scan<req.newsize; scan++) {
-            len=search(I,req.old,req.oldsize,req.new+scan,req.newsize-scan,
-                       0,req.oldsize,&pos);
+    while(scan<req.aftersize) {
+        int64_t beforescore=0;
+        for(int64_t scsc=scan+=len; scan<req.aftersize; scan++) {
+            len=search(I,req.before,req.beforesize,req.after+scan,req.aftersize-scan,
+                       0,req.beforesize,&pos);
 
             for(; scsc<scan+len; scsc++)
-                if((scsc+lastoffset<req.oldsize) &&
-                        (req.old[scsc+lastoffset] == req.new[scsc]))
-                    oldscore++;
+                if((scsc+lastoffset<req.beforesize) &&
+                        (req.before[scsc+lastoffset] == req.after[scsc]))
+                    beforescore++;
 
-            if(((len==oldscore) && (len!=0)) ||
-                    (len>oldscore+8)) break;
+            if(((len==beforescore) && (len!=0)) ||
+                    (len>beforescore+8)) break;
 
-            if((scan+lastoffset<req.oldsize) &&
-                    (req.old[scan+lastoffset] == req.new[scan]))
-                oldscore--;
+            if((scan+lastoffset<req.beforesize) &&
+                    (req.before[scan+lastoffset] == req.after[scan]))
+                beforescore--;
         };
 
-        if((len!=oldscore) || (scan==req.newsize)) {
+        if((len!=beforescore) || (scan==req.aftersize)) {
             int64_t s=0;
             int64_t Sf=0;
             int64_t lenf=0;
-            for(int64_t i=0; (lastscan+i<scan)&&(lastpos+i<req.oldsize);) {
-                if(req.old[lastpos+i]==req.new[lastscan+i]) s++;
+            for(int64_t i=0; (lastscan+i<scan)&&(lastpos+i<req.beforesize);) {
+                if(req.before[lastpos+i]==req.after[lastscan+i]) s++;
                 i++;
                 if(s*2-i>Sf*2-lenf) {
                     Sf=s;
@@ -285,11 +285,11 @@ static int bsdiff_internal(const struct bsdiff_request req)
             };
 
             int64_t lenb=0;
-            if(scan<req.newsize) {
+            if(scan<req.aftersize) {
                 s=0;
                 int64_t Sb=0;
                 for(int64_t i=1; (scan>=lastscan+i)&&(pos>=i); i++) {
-                    if(req.old[pos-i]==req.new[scan-i]) s++;
+                    if(req.before[pos-i]==req.after[scan-i]) s++;
                     if(s*2-i>Sb*2-lenb) {
                         Sb=s;
                         lenb=i;
@@ -303,10 +303,10 @@ static int bsdiff_internal(const struct bsdiff_request req)
                 int64_t Ss=0;
                 int64_t lens=0;
                 for(int64_t i=0; i<overlap; i++) {
-                    if(req.new[lastscan+lenf-overlap+i]==
-                            req.old[lastpos+lenf-overlap+i]) s++;
-                    if(req.new[scan-lenb+i]==
-                            req.old[pos-lenb+i]) s--;
+                    if(req.after[lastscan+lenf-overlap+i]==
+                            req.before[lastpos+lenf-overlap+i]) s++;
+                    if(req.after[scan-lenb+i]==
+                            req.before[pos-lenb+i]) s--;
                     if(s>Ss) {
                         Ss=s;
                         lens=i+1;
@@ -328,13 +328,13 @@ static int bsdiff_internal(const struct bsdiff_request req)
 
             /* Write diff data */
             for(int64_t i=0; i<lenf; i++)
-                buffer[i]=req.new[lastscan+i]-req.old[lastpos+i];
+                buffer[i]=req.after[lastscan+i]-req.before[lastpos+i];
             if (writedata(req.stream, buffer, lenf))
                 return -1;
 
             /* Write extra data */
             for(int64_t i=0; i<(scan-lenb)-(lastscan+lenf); i++)
-                buffer[i]=req.new[lastscan+lenf+i];
+                buffer[i]=req.after[lastscan+lenf+i];
             if (writedata(req.stream, buffer, (scan-lenb)-(lastscan+lenf)))
                 return -1;
 
@@ -347,21 +347,21 @@ static int bsdiff_internal(const struct bsdiff_request req)
     return 0;
 }
 
-int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t newsize, struct bsdiff_stream* stream) {
+int bsdiff(const uint8_t* before, int64_t beforesize, const uint8_t* after, int64_t aftersize, struct bsdiff_stream* stream) {
     struct bsdiff_request req;
 
-    if((req.I=stream->malloc((oldsize+1)*sizeof(int64_t)))==NULL)
+    if((req.I=stream->malloc((beforesize+1)*sizeof(int64_t)))==NULL)
         return -1;
 
-    if((req.buffer=stream->malloc(newsize+1))==NULL) {
+    if((req.buffer=stream->malloc(aftersize+1))==NULL) {
         stream->free(req.I);
         return -1;
     }
 
-    req.old = old;
-    req.oldsize = oldsize;
-    req.new = new;
-    req.newsize = newsize;
+    req.before = before;
+    req.beforesize = beforesize;
+    req.after = after;
+    req.aftersize = aftersize;
     req.stream = stream;
 
     int result = bsdiff_internal(req);
@@ -392,8 +392,8 @@ static int bz2_write(struct bsdiff_stream* stream, const void* buffer, int size)
 
 int main(int argc,char *argv[]) {
     int fd;
-    uint8_t *old,*new;
-    off_t oldsize,newsize;
+    uint8_t *before,*after;
+    off_t beforesize,aftersize;
     uint8_t buf[8];
     FILE * pf;
     struct bsdiff_stream stream;
@@ -402,46 +402,46 @@ int main(int argc,char *argv[]) {
     stream.free = free;
     stream.write = bz2_write;
 
-    if(argc!=4) errx(1,"usage: %s oldfile newfile patchfile\n",argv[0]);
+    if(argc!=4) errx(1,"usage: %s beforefile afterfile patchfile\n",argv[0]);
 
-    /* Allocate oldsize+1 bytes instead of oldsize bytes to ensure
+    /* Allocate beforesize+1 bytes instead of beforesize bytes to ensure
         that we never try to malloc(0) and get a NULL pointer */
     if(((fd=open(argv[1],O_RDONLY,0))<0) ||
-            ((oldsize=lseek(fd,0,SEEK_END))==-1) ||
-            ((old=malloc(oldsize+1))==NULL) ||
+            ((beforesize=lseek(fd,0,SEEK_END))==-1) ||
+            ((before=malloc(beforesize+1))==NULL) ||
             (lseek(fd,0,SEEK_SET)!=0) ||
-            (read(fd,old,oldsize)!=oldsize) ||
+            (read(fd,before,beforesize)!=beforesize) ||
             (close(fd)==-1)) err(1,"%s",argv[1]);
 
 
-    /* Allocate newsize+1 bytes instead of newsize bytes to ensure
+    /* Allocate aftersize+1 bytes instead of aftersize bytes to ensure
         that we never try to malloc(0) and get a NULL pointer */
     if(((fd=open(argv[2],O_RDONLY,0))<0) ||
-            ((newsize=lseek(fd,0,SEEK_END))==-1) ||
-            ((new=malloc(newsize+1))==NULL) ||
+            ((aftersize=lseek(fd,0,SEEK_END))==-1) ||
+            ((after=malloc(aftersize+1))==NULL) ||
             (lseek(fd,0,SEEK_SET)!=0) ||
-            (read(fd,new,newsize)!=newsize) ||
+            (read(fd,after,aftersize)!=aftersize) ||
             (close(fd)==-1)) err(1,"%s",argv[2]);
 
     /* Create the patch file */
     if ((pf = fopen(argv[3], "w")) == NULL)
         err(1, "%s", argv[3]);
 
-    /* Write header (newsize)*/
-    offtout(newsize, buf);
+    /* Write header (aftersize)*/
+    offtout(aftersize, buf);
     if (fwrite(buf, sizeof(buf), 1, pf) != 1)
         err(1, "Failed to write header");
 
     stream.opaque = pf;
-    if (bsdiff(old, oldsize, new, newsize, &stream))
+    if (bsdiff(before, beforesize, after, aftersize, &stream))
         err(1, "bsdiff");
 
     if (fclose(pf))
         err(1, "fclose");
 
     /* Free the memory we used */
-    free(old);
-    free(new);
+    free(before);
+    free(after);
 
     return 0;
 }

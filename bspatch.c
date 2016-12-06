@@ -45,15 +45,15 @@ static int64_t offtin(uint8_t *buf)
 	return y;
 }
 
-int bspatch(const uint8_t* old, int64_t oldsize, uint8_t* new, int64_t newsize, struct bspatch_stream* stream)
+int bspatch(const uint8_t* before, int64_t beforesize, uint8_t* after, int64_t aftersize, struct bspatch_stream* stream)
 {
 	uint8_t buf[8];
-	int64_t oldpos,newpos;
+    int64_t beforepos,afterpos;
 	int64_t ctrl[3];
 	int64_t i;
 
-	oldpos=0;newpos=0;
-	while(newpos<newsize) {
+    beforepos=0;afterpos=0;
+    while(afterpos<aftersize) {
 		/* Read control data */
 		for(i=0;i<=2;i++) {
 			if (stream->read(stream, buf, 8))
@@ -62,33 +62,33 @@ int bspatch(const uint8_t* old, int64_t oldsize, uint8_t* new, int64_t newsize, 
 		};
 
 		/* Sanity-check */
-		if(newpos+ctrl[0]>newsize)
+        if(afterpos+ctrl[0]>aftersize)
 			return -1;
 
 		/* Read diff string */
-		if (stream->read(stream, new + newpos, ctrl[0]))
+        if (stream->read(stream, after + afterpos, ctrl[0]))
 			return -1;
 
-		/* Add old data to diff string */
+        /* Add before data to diff string */
 		for(i=0;i<ctrl[0];i++)
-			if((oldpos+i>=0) && (oldpos+i<oldsize))
-				new[newpos+i]+=old[oldpos+i];
+            if((beforepos+i>=0) && (beforepos+i<beforesize))
+                after[afterpos+i]+=before[beforepos+i];
 
 		/* Adjust pointers */
-		newpos+=ctrl[0];
-		oldpos+=ctrl[0];
+        afterpos+=ctrl[0];
+        beforepos+=ctrl[0];
 
 		/* Sanity-check */
-		if(newpos+ctrl[1]>newsize)
+        if(afterpos+ctrl[1]>aftersize)
 			return -1;
 
 		/* Read extra string */
-		if (stream->read(stream, new + newpos, ctrl[1]))
+        if (stream->read(stream, after + afterpos, ctrl[1]))
 			return -1;
 
 		/* Adjust pointers */
-		newpos+=ctrl[1];
-		oldpos+=ctrl[2];
+        afterpos+=ctrl[1];
+        beforepos+=ctrl[2];
 	};
 
 	return 0;
@@ -120,12 +120,12 @@ int main(int argc,char * argv[])
 	FILE * f;
 	int fd;
 	uint8_t header[24];
-	uint8_t *old, *new;
-	int64_t oldsize, newsize;
+    uint8_t *before, *after;
+    int64_t beforesize, aftersize;
 	struct bspatch_stream stream;
 	struct stat sb;
 
-	if(argc!=4) errx(1,"usage: %s oldfile newfile patchfile\n",argv[0]);
+    if(argc!=4) errx(1,"usage: %s beforefile afterfile patchfile\n",argv[0]);
 
 	/* Open patch file */
 	if ((f = fopen(argv[3], "r")) == NULL)
@@ -139,35 +139,35 @@ int main(int argc,char * argv[])
 	}
 
 	/* Read lengths from header */
-    newsize=offtin(header);
-	if(newsize<0)
+    aftersize=offtin(header);
+    if(aftersize<0)
 		errx(1,"Corrupt patch\n");
 
 	/* Close patch file and re-open it via libbzip2 at the right places */
 	if(((fd=open(argv[1],O_RDONLY,0))<0) ||
-		((oldsize=lseek(fd,0,SEEK_END))==-1) ||
-		((old=malloc(oldsize+1))==NULL) ||
+        ((beforesize=lseek(fd,0,SEEK_END))==-1) ||
+        ((before=malloc(beforesize+1))==NULL) ||
 		(lseek(fd,0,SEEK_SET)!=0) ||
-		(read(fd,old,oldsize)!=oldsize) ||
+        (read(fd,before,beforesize)!=beforesize) ||
 		(fstat(fd, &sb)) ||
 		(close(fd)==-1)) err(1,"%s",argv[1]);
-	if((new=malloc(newsize+1))==NULL) err(1,NULL);
+    if((after=malloc(aftersize+1))==NULL) err(1,NULL);
 
 	stream.read = bz2_read;
     stream.opaque = f;
-	if (bspatch(old, oldsize, new, newsize, &stream))
+    if (bspatch(before, beforesize, after, aftersize, &stream))
 		errx(1, "bspatch");
 
 	/* Clean up the bzip2 reads */
 	fclose(f);
 
-	/* Write the new file */
+    /* Write the after file */
 	if(((fd=open(argv[2],O_CREAT|O_TRUNC|O_WRONLY,sb.st_mode))<0) ||
-		(write(fd,new,newsize)!=newsize) || (close(fd)==-1))
+        (write(fd,after,aftersize)!=aftersize) || (close(fd)==-1))
 		err(1,"%s",argv[2]);
 
-	free(new);
-	free(old);
+    free(after);
+    free(before);
 
 	return 0;
 }
