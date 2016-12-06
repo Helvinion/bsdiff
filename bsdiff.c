@@ -32,21 +32,27 @@
 
 #define MIN(x,y) (((x)<(y)) ? (x) : (y))
 
+static inline void swap(int64_t *a, int64_t *b)
+{
+    int64_t tmp = *a;
+    *a = *b;
+    *b = tmp;
+}
+
 static void split(int64_t *I,int64_t *V,int64_t start,int64_t len,int64_t h)
 {
-    if(len<16) {
+    if (len<16) {
+        int64_t j;
         for(int64_t k=start; k<start+len; k+=j) {
-            int64_t j=1;
-            x=V[I[k]+h];
+            j=1;
+            int64_t x=V[I[k]+h];
             for(int64_t i=1; k+i<start+len; i++) {
                 if(V[I[k+i]+h]<x) {
                     x=V[I[k+i]+h];
                     j=0;
                 };
                 if(V[I[k+i]+h]==x) {
-                    int64_t tmp=I[k+j];
-                    I[k+j]=I[k+i];
-                    I[k+i]=tmp;
+                    swap(&I[k+j], &I[k+i]);
                     j++;
                 };
             };
@@ -73,14 +79,10 @@ static void split(int64_t *I,int64_t *V,int64_t start,int64_t len,int64_t h)
         if(V[I[i]+h]<x) {
             i++;
         } else if(V[I[i]+h]==x) {
-            int64_t tmp=I[i];
-            I[i]=I[jj+j];
-            I[jj+j]=tmp;
+            swap(&I[i], &I[jj+j]);
             j++;
         } else {
-            int64_t tmp=I[i];
-            I[i]=I[kk+k];
-            I[kk+k]=tmp;
+            swap(&I[i], &I[kk+k]);
             k++;
         };
     };
@@ -89,9 +91,7 @@ static void split(int64_t *I,int64_t *V,int64_t start,int64_t len,int64_t h)
         if(V[I[jj+j]+h]==x) {
             j++;
         } else {
-            int64_t tmp=I[jj+j];
-            I[jj+j]=I[kk+k];
-            I[kk+k]=tmp;
+            swap(&I[jj+j], &I[kk+k]);
             k++;
         };
     };
