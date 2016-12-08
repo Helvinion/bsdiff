@@ -32,21 +32,21 @@
 
 #define MIN(x,y) (((x)<(y)) ? (x) : (y))
 
-static inline void swap(int64_t *a, int64_t *b)
+static inline void swap(unit_t *a, unit_t *b)
 {
-    int64_t tmp = *a;
+    unit_t tmp = *a;
     *a = *b;
     *b = tmp;
 }
 
-static void split(int64_t *I,int64_t *V,int64_t start,int64_t len,int64_t h)
+static void split(unit_t *I,unit_t *V,unit_t start,unit_t len,unit_t h)
 {
     if (len<16) {
-        int64_t j;
-        for(int64_t k=start; k<start+len; k+=j) {
+        unit_t j;
+        for(unit_t k=start; k<start+len; k+=j) {
             j=1;
-            int64_t x=V[I[k]+h];
-            for(int64_t i=1; k+i<start+len; i++) {
+            unit_t x=V[I[k]+h];
+            for(unit_t i=1; k+i<start+len; i++) {
                 if(V[I[k+i]+h]<x) {
                     x=V[I[k+i]+h];
                     j=0;
@@ -56,25 +56,25 @@ static void split(int64_t *I,int64_t *V,int64_t start,int64_t len,int64_t h)
                     j++;
                 };
             };
-            for(int64_t i=0; i<j; i++) V[I[k+i]]=k+j-1;
+            for(unit_t i=0; i<j; i++) V[I[k+i]]=k+j-1;
             if(j==1) I[k]=-1;
         };
         return;
     };
 
-    int64_t x=V[I[start+len/2]+h];
-    int64_t jj=0;
-    int64_t kk=0;
-    for(int64_t i=start; i<start+len; i++) {
+    unit_t x=V[I[start+len/2]+h];
+    unit_t jj=0;
+    unit_t kk=0;
+    for(unit_t i=start; i<start+len; i++) {
         if(V[I[i]+h]<x) jj++;
         if(V[I[i]+h]==x) kk++;
     };
     jj+=start;
     kk+=jj;
 
-    int64_t i=start;
-    int64_t j=0;
-    int64_t k=0;
+    unit_t i=start;
+    unit_t j=0;
+    unit_t k=0;
     while(i<jj) {
         if(V[I[i]+h]<x) {
             i++;
@@ -104,25 +104,25 @@ static void split(int64_t *I,int64_t *V,int64_t start,int64_t len,int64_t h)
     if(start+len>kk) split(I,V,kk,start+len-kk,h);
 }
 
-static void qsufsort(int64_t *I,int64_t *V,const uint8_t *before,int64_t beforesize) {
-    int64_t buckets[256];
+static void qsufsort(unit_t *I,unit_t *V,const uint8_t *before,unit_t beforesize) {
+    unit_t buckets[256];
 
-    for(int64_t i=0; i<256; i++) buckets[i]=0;
-    for(int64_t i=0; i<beforesize; i++) buckets[before[i]]++;
-    for(int64_t i=1; i<256; i++) buckets[i]+=buckets[i-1];
-    for(int64_t i=255; i>0; i--) buckets[i]=buckets[i-1];
+    for(unit_t i=0; i<256; i++) buckets[i]=0;
+    for(unit_t i=0; i<beforesize; i++) buckets[before[i]]++;
+    for(unit_t i=1; i<256; i++) buckets[i]+=buckets[i-1];
+    for(unit_t i=255; i>0; i--) buckets[i]=buckets[i-1];
     buckets[0]=0;
 
-    for(int64_t i=0; i<beforesize; i++) I[++buckets[before[i]]]=i;
+    for(unit_t i=0; i<beforesize; i++) I[++buckets[before[i]]]=i;
     I[0]=beforesize;
-    for(int64_t i=0; i<beforesize; i++) V[i]=buckets[before[i]];
+    for(unit_t i=0; i<beforesize; i++) V[i]=buckets[before[i]];
     V[beforesize]=0;
-    for(int64_t i=1; i<256; i++) if(buckets[i]==buckets[i-1]+1) I[buckets[i]]=-1;
+    for(unit_t i=1; i<256; i++) if(buckets[i]==buckets[i-1]+1) I[buckets[i]]=-1;
     I[0]=-1;
 
-    for(int64_t h=1; I[0] != -(beforesize+1); h+=h) {
-        int64_t len=0;
-        int64_t i;
+    for(unit_t h=1; I[0] != -(beforesize+1); h+=h) {
+        unit_t len=0;
+        unit_t i;
         for(i=0; i<beforesize+1;) {
             if(I[i]<0) {
                 len-=I[i];
@@ -138,11 +138,11 @@ static void qsufsort(int64_t *I,int64_t *V,const uint8_t *before,int64_t befores
         if(len) I[i-len]=-len;
     };
 
-    for(int64_t i=0; i<beforesize+1; i++) I[V[i]]=i;
+    for(unit_t i=0; i<beforesize+1; i++) I[V[i]]=i;
 }
 
-static int64_t matchlen(const uint8_t *before,int64_t beforesize,const uint8_t *after,int64_t aftersize) {
-    int64_t i;
+static unit_t matchlen(const uint8_t *before,unit_t beforesize,const uint8_t *after,unit_t aftersize) {
+    unit_t i;
 
     for(i=0; (i<beforesize)&&(i<aftersize); i++)
         if(before[i]!=after[i]) break;
@@ -150,11 +150,11 @@ static int64_t matchlen(const uint8_t *before,int64_t beforesize,const uint8_t *
     return i;
 }
 
-static int64_t search(const int64_t *I,const uint8_t *before,int64_t beforesize,
-                      const uint8_t *after,int64_t aftersize,int64_t st,int64_t en,int64_t *pos) {
+static unit_t search(const unit_t *I,const uint8_t *before,unit_t beforesize,
+                      const uint8_t *after,unit_t aftersize,unit_t st,unit_t en,unit_t *pos) {
     if(en-st<2) {
-        int64_t x=matchlen(before+I[st],beforesize-I[st],after,aftersize);
-        int64_t y=matchlen(before+I[en],beforesize-I[en],after,aftersize);
+        unit_t x=matchlen(before+I[st],beforesize-I[st],after,aftersize);
+        unit_t y=matchlen(before+I[en],beforesize-I[en],after,aftersize);
 
         if(x>y) {
             *pos=I[st];
@@ -165,7 +165,7 @@ static int64_t search(const int64_t *I,const uint8_t *before,int64_t beforesize,
         }
     };
 
-    int64_t x=st+(en-st)/2;
+    unit_t x=st+(en-st)/2;
     if(memcmp(before+I[x],after,MIN(beforesize-I[x],aftersize))<0) {
         return search(I,before,beforesize,after,aftersize,x,en,pos);
     } else {
@@ -173,40 +173,14 @@ static int64_t search(const int64_t *I,const uint8_t *before,int64_t beforesize,
     };
 }
 
-static void offtout(int64_t x,uint8_t *buf) {
-    int64_t y;
-
-    if(x<0) y=-x;
-    else y=x;
-
-    buf[0]=y%256;
-    y-=buf[0];
-    y=y/256;
-    buf[1]=y%256;
-    y-=buf[1];
-    y=y/256;
-    buf[2]=y%256;
-    y-=buf[2];
-    y=y/256;
-    buf[3]=y%256;
-    y-=buf[3];
-    y=y/256;
-    buf[4]=y%256;
-    y-=buf[4];
-    y=y/256;
-    buf[5]=y%256;
-    y-=buf[5];
-    y=y/256;
-    buf[6]=y%256;
-    y-=buf[6];
-    y=y/256;
-    buf[7]=y%256;
-
-    if(x<0) buf[7]|=0x80;
+static void offtout(unit_t x,uint8_t *buf) {
+    // The original code saves x as the absolute value with the
+    // msb being the sign bit. This compresses very slightly better.
+    memcpy(buf, &x, sizeof(unit_t));
 }
 
-static int64_t writedata(struct bsdiff_stream* stream, const void* buffer, int64_t length) {
-    int64_t result = 0;
+static unit_t writedata(struct bsdiff_stream* stream, const void* buffer, unit_t length) {
+    unit_t result = 0;
 
     while (length > 0) {
         const int smallsize = (int)MIN(length, INT_MAX);
@@ -225,20 +199,20 @@ static int64_t writedata(struct bsdiff_stream* stream, const void* buffer, int64
 
 struct bsdiff_request {
     const uint8_t* before;
-    int64_t beforesize;
+    unit_t beforesize;
     const uint8_t* after;
-    int64_t aftersize;
+    unit_t aftersize;
     struct bsdiff_stream* stream;
-    int64_t *I;
+    unit_t *I;
     uint8_t *buffer;
 };
 
 static int bsdiff_internal(const struct bsdiff_request req)
 {
-    int64_t *V=req.stream->malloc((req.beforesize+1)*sizeof(int64_t));
+    unit_t *V=req.stream->malloc((req.beforesize+1)*sizeof(unit_t));
     if(V==NULL)
         return -1;
-    int64_t *I = req.I;
+    unit_t *I = req.I;
 
     qsufsort(I,V,req.before,req.beforesize);
     req.stream->free(V);
@@ -246,15 +220,15 @@ static int bsdiff_internal(const struct bsdiff_request req)
     uint8_t *buffer = req.buffer;
 
     /* Compute the differences, writing ctrl as we go */
-    int64_t scan=0;
-    int64_t len=0;
-    int64_t pos=0;
-    int64_t lastscan=0;
-    int64_t lastpos=0;
-    int64_t lastoffset=0;
+    unit_t scan=0;
+    unit_t len=0;
+    unit_t pos=0;
+    unit_t lastscan=0;
+    unit_t lastpos=0;
+    unit_t lastoffset=0;
     while(scan<req.aftersize) {
-        int64_t beforescore=0;
-        for(int64_t scsc=scan+=len; scan<req.aftersize; scan++) {
+        unit_t beforescore=0;
+        for(unit_t scsc=scan+=len; scan<req.aftersize; scan++) {
             len=search(I,req.before,req.beforesize,req.after+scan,req.aftersize-scan,
                        0,req.beforesize,&pos);
 
@@ -272,10 +246,10 @@ static int bsdiff_internal(const struct bsdiff_request req)
         };
 
         if((len!=beforescore) || (scan==req.aftersize)) {
-            int64_t s=0;
-            int64_t Sf=0;
-            int64_t lenf=0;
-            for(int64_t i=0; (lastscan+i<scan)&&(lastpos+i<req.beforesize);) {
+            unit_t s=0;
+            unit_t Sf=0;
+            unit_t lenf=0;
+            for(unit_t i=0; (lastscan+i<scan)&&(lastpos+i<req.beforesize);) {
                 if(req.before[lastpos+i]==req.after[lastscan+i]) s++;
                 i++;
                 if(s*2-i>Sf*2-lenf) {
@@ -284,11 +258,11 @@ static int bsdiff_internal(const struct bsdiff_request req)
                 };
             };
 
-            int64_t lenb=0;
+            unit_t lenb=0;
             if(scan<req.aftersize) {
                 s=0;
-                int64_t Sb=0;
-                for(int64_t i=1; (scan>=lastscan+i)&&(pos>=i); i++) {
+                unit_t Sb=0;
+                for(unit_t i=1; (scan>=lastscan+i)&&(pos>=i); i++) {
                     if(req.before[pos-i]==req.after[scan-i]) s++;
                     if(s*2-i>Sb*2-lenb) {
                         Sb=s;
@@ -298,11 +272,11 @@ static int bsdiff_internal(const struct bsdiff_request req)
             };
 
             if(lastscan+lenf>scan-lenb) {
-                int64_t overlap=(lastscan+lenf)-(scan-lenb);
+                unit_t overlap=(lastscan+lenf)-(scan-lenb);
                 s=0;
-                int64_t Ss=0;
-                int64_t lens=0;
-                for(int64_t i=0; i<overlap; i++) {
+                unit_t Ss=0;
+                unit_t lens=0;
+                for(unit_t i=0; i<overlap; i++) {
                     if(req.after[lastscan+lenf-overlap+i]==
                             req.before[lastpos+lenf-overlap+i]) s++;
                     if(req.after[scan-lenb+i]==
@@ -317,23 +291,23 @@ static int bsdiff_internal(const struct bsdiff_request req)
                 lenb-=lens;
             };
 
-            uint8_t buf[8 * 3];
+            uint8_t buf[sizeof(unit_t) * 3];
             offtout(lenf,buf);
-            offtout((scan-lenb)-(lastscan+lenf),buf+8);
-            offtout((pos-lenb)-(lastpos+lenf),buf+16);
+            offtout((scan-lenb)-(lastscan+lenf),buf+sizeof(unit_t));
+            offtout((pos-lenb)-(lastpos+lenf),buf+2*sizeof(unit_t));
 
             /* Write control data */
             if (writedata(req.stream, buf, sizeof(buf)))
                 return -1;
 
             /* Write diff data */
-            for(int64_t i=0; i<lenf; i++)
+            for(unit_t i=0; i<lenf; i++)
                 buffer[i]=req.after[lastscan+i]-req.before[lastpos+i];
             if (writedata(req.stream, buffer, lenf))
                 return -1;
 
             /* Write extra data */
-            for(int64_t i=0; i<(scan-lenb)-(lastscan+lenf); i++)
+            for(unit_t i=0; i<(scan-lenb)-(lastscan+lenf); i++)
                 buffer[i]=req.after[lastscan+lenf+i];
             if (writedata(req.stream, buffer, (scan-lenb)-(lastscan+lenf)))
                 return -1;
@@ -347,10 +321,10 @@ static int bsdiff_internal(const struct bsdiff_request req)
     return 0;
 }
 
-int bsdiff(const uint8_t* before, int64_t beforesize, const uint8_t* after, int64_t aftersize, struct bsdiff_stream* stream) {
+int bsdiff(const uint8_t* before, unit_t beforesize, const uint8_t* after, unit_t aftersize, struct bsdiff_stream* stream) {
     struct bsdiff_request req;
 
-    if((req.I=stream->malloc((beforesize+1)*sizeof(int64_t)))==NULL)
+    if((req.I=stream->malloc((beforesize+1)*sizeof(unit_t)))==NULL)
         return -1;
 
     if((req.buffer=stream->malloc(aftersize+1))==NULL) {
@@ -394,7 +368,7 @@ int main(int argc,char *argv[]) {
     int fd;
     uint8_t *before,*after;
     off_t beforesize,aftersize;
-    uint8_t buf[8];
+    uint8_t buf[sizeof(unit_t)];
     FILE * pf;
     struct bsdiff_stream stream;
 

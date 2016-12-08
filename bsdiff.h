@@ -31,6 +31,8 @@
 # include <stddef.h>
 # include <stdint.h>
 
+typedef int32_t unit_t;
+
 struct bsdiff_stream
 {
 	void* opaque;
@@ -40,6 +42,6 @@ struct bsdiff_stream
 	int (*write)(struct bsdiff_stream* stream, const void* buffer, int size);
 };
 
-int bsdiff(const uint8_t* before, int64_t oldsize, const uint8_t* new, int64_t aftersize, struct bsdiff_stream* stream);
+int bsdiff(const uint8_t* before, unit_t oldsize, const uint8_t* new, unit_t aftersize, struct bsdiff_stream* stream);
 
 #endif
