@@ -29,6 +29,7 @@
 
 #include <limits.h>
 #include <string.h>
+#include <stdio.h>
 
 #define MIN(x,y) (((x)<(y)) ? (x) : (y))
 
@@ -220,38 +221,64 @@ static int bsdiff_internal(const struct bsdiff_request req)
     uint8_t *buffer = req.buffer;
 
     /* Compute the differences, writing ctrl as we go */
+    unit_t frank_old_offset = 0;
+    unit_t frank_new_offset = 0;
+
     unit_t scan=0;
     unit_t len=0;
     unit_t pos=0;
     unit_t lastscan=0;
     unit_t lastpos=0;
     unit_t lastoffset=0;
-    while(scan<req.aftersize) {
+    while (scan<req.aftersize) {
         unit_t beforescore=0;
-        for(unit_t scsc=scan+=len; scan<req.aftersize; scan++) {
+        scan += len;
+        for(unit_t scsc=scan; scan<req.aftersize; scan++) {
+            // Search for the string of everything that's left
+            // in the "after" file using the entire contents of
+            // the "before" file, and store the place where a
+            // substring match was found in pos,len.
             len=search(I,req.before,req.beforesize,req.after+scan,req.aftersize-scan,
                        0,req.beforesize,&pos);
 
+            // From where we started to the length that was matched,
+            // if we're still in the "before" file AND the character is
+            // an exact match, bump the beforescore.
             for(; scsc<scan+len; scsc++)
                 if((scsc+lastoffset<req.beforesize) &&
                         (req.before[scsc+lastoffset] == req.after[scsc]))
                     beforescore++;
 
+            // If there was a match and it was exact (len == beforescore) OR
+            // there were more than 8 mismatches, then break
             if(((len==beforescore) && (len!=0)) ||
                     (len>beforescore+8)) break;
 
+            // If we're still in the "before" file AND the first character in
+            // the match is exact, then decrement the before score.
             if((scan+lastoffset<req.beforesize) &&
                     (req.before[scan+lastoffset] == req.after[scan]))
                 beforescore--;
-        };
+        }
+
+        // We either hit the end of the "after" file or we made an exact
+        // match to the before file or there were more than 8 mismatches.
 
         if((len!=beforescore) || (scan==req.aftersize)) {
-            unit_t s=0;
-            unit_t Sf=0;
+            // If not an exact match OR we reached the end of the "after" file.
+
+            // Figure out how many characters to insert from the "before" file
             unit_t lenf=0;
-            for(unit_t i=0; (lastscan+i<scan)&&(lastpos+i<req.beforesize);) {
+
+            // For from the last position we were at in the "after" file to where
+            // we are now. Make sure that we don't run out of bytes in the before file.
+            for(unit_t i=0, s=0, Sf=0; (lastscan+i<scan)&&(lastpos+i<req.beforesize);) {
+                // If an exact match, increment s
                 if(req.before[lastpos+i]==req.after[lastscan+i]) s++;
                 i++;
+
+                // If 2*#exact_matches-total_chars > 2*#best_exact_matches-best_total_chars, then
+                //  #best_exact_matches = #exact_matches; best_total_chars = total_chars
                 if(s*2-i>Sf*2-lenf) {
                     Sf=s;
                     lenf=i;
@@ -260,20 +287,29 @@ static int bsdiff_internal(const struct bsdiff_request req)
 
             unit_t lenb=0;
             if(scan<req.aftersize) {
-                s=0;
+                // If not at the end
+                unit_t s=0;
                 unit_t Sb=0;
+
+                // Go from 1 char before the match to the beginning of the "before" file or to
+                // the last place we emitted patch data for in the after file.
                 for(unit_t i=1; (scan>=lastscan+i)&&(pos>=i); i++) {
+                    // If the character before the match is an exact match,
+                    // increment s
                     if(req.before[pos-i]==req.after[scan-i]) s++;
+
+                    // If 2*#exact_matches-total chars before > 2*#best_exact_matches-best_total_chars,
+                    // then update the best.
                     if(s*2-i>Sb*2-lenb) {
                         Sb=s;
                         lenb=i;
-                    };
-                };
-            };
+                    }
+                }
+            }
 
             if(lastscan+lenf>scan-lenb) {
                 unit_t overlap=(lastscan+lenf)-(scan-lenb);
-                s=0;
+                unit_t s=0;
                 unit_t Ss=0;
                 unit_t lens=0;
                 for(unit_t i=0; i<overlap; i++) {
@@ -295,6 +331,21 @@ static int bsdiff_internal(const struct bsdiff_request req)
             offtout(lenf,buf);
             offtout((scan-lenb)-(lastscan+lenf),buf+sizeof(unit_t));
             offtout((pos-lenb)-(lastpos+lenf),buf+2*sizeof(unit_t));
+            printf("----\n");
+            printf("Current file offsets: old=%d, new=%d\n", lastpos, lastscan);
+            printf("Update %d bytes\n", lenf);
+            frank_old_offset += lenf;
+            frank_new_offset += lenf;
+
+            printf("Insert %d bytes\n", (scan-lenb)-(lastscan+lenf));
+            frank_new_offset += (scan-lenb)-(lastscan+lenf);
+
+            printf("Seek in old data by %d bytes\n", (pos-lenb)-(lastpos+lenf));
+            frank_old_offset += (pos-lenb)-(lastpos+lenf);
+
+            printf("lastscan=%d, scan=%d, lastpos=%d, pos=%d, lenb=%d, lenf=%d\n",
+                   lastscan, scan, lastpos, pos, lenb, lenf);
+            printf("Current file offsets: old=%d, new=%d\n", pos, scan); // Use vars here
 
             /* Write control data */
             if (writedata(req.stream, buf, sizeof(buf)))
