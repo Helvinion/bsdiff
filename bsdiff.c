@@ -29,8 +29,18 @@
 
 #include <limits.h>
 #include <string.h>
+#include <sys/types.h>
+#include <bzlib.h>
+#include <err.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
+
+static int bz2_write(struct bsdiff_stream* stream, const void* buffer, int size);
 
 static void split(int64_t* I, int64_t* V, int64_t start, int64_t len, int64_t h)
 {
@@ -48,22 +58,22 @@ static void split(int64_t* I, int64_t* V, int64_t start, int64_t len, int64_t h)
         {
           x = V[I[k + i] + h];
           j = 0;
-        };
+        }
         if (V[I[k + i] + h] == x)
         {
           tmp = I[k + j];
           I[k + j] = I[k + i];
           I[k + i] = tmp;
           j++;
-        };
-      };
+        }
+      }
       for (i = 0; i < j; i++)
         V[I[k + i]] = k + j - 1;
       if (j == 1)
         I[k] = -1;
-    };
+    }
     return;
-  };
+  }
 
   x = V[I[start + len / 2] + h];
   jj = 0;
@@ -74,7 +84,7 @@ static void split(int64_t* I, int64_t* V, int64_t start, int64_t len, int64_t h)
       jj++;
     if (V[I[i] + h] == x)
       kk++;
-  };
+  }
   jj += start;
   kk += jj;
 
@@ -100,8 +110,8 @@ static void split(int64_t* I, int64_t* V, int64_t start, int64_t len, int64_t h)
       I[i] = I[kk + k];
       I[kk + k] = tmp;
       k++;
-    };
-  };
+    }
+  }
 
   while (jj + j < kk)
   {
@@ -115,8 +125,8 @@ static void split(int64_t* I, int64_t* V, int64_t start, int64_t len, int64_t h)
       I[jj + j] = I[kk + k];
       I[kk + k] = tmp;
       k++;
-    };
-  };
+    }
+  }
 
   if (jj > start)
     split(I, V, start, jj - start, h);
@@ -174,11 +184,11 @@ static void qsufsort(int64_t* I, int64_t* V, const uint8_t* old, int64_t oldsize
         split(I, V, i, len, h);
         i += len;
         len = 0;
-      };
-    };
+      }
+    }
     if (len)
       I[i - len] = -len;
-  };
+  }
 
   for (i = 0; i < oldsize + 1; i++)
     I[V[i]] = i;
@@ -195,8 +205,7 @@ static int64_t matchlen(const uint8_t* old, int64_t oldsize, const uint8_t* new,
   return i;
 }
 
-static int64_t search(const int64_t* I, const uint8_t* old, int64_t oldsize,
-                      const uint8_t* new, int64_t newsize, int64_t st, int64_t en, int64_t* pos)
+static int64_t search(const int64_t* I, const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t newsize, int64_t st, int64_t en, int64_t* pos)
 {
   int64_t x, y;
 
@@ -215,7 +224,7 @@ static int64_t search(const int64_t* I, const uint8_t* old, int64_t oldsize,
       *pos = I[en];
       return y;
     }
-  };
+  }
 
   x = st + (en - st) / 2;
   if (memcmp(old + I[x], new, MIN(oldsize - I[x], newsize)) < 0)
@@ -225,7 +234,7 @@ static int64_t search(const int64_t* I, const uint8_t* old, int64_t oldsize,
   else
   {
     return search(I, old, oldsize, new, newsize, st, x, pos);
-  };
+  }
 }
 
 static void offtout(int64_t x, uint8_t* buf)
@@ -271,7 +280,7 @@ static int64_t writedata(struct bsdiff_stream* stream, const void* buffer, int64
   while (length > 0)
   {
     const int smallsize = (int)MIN(length, INT_MAX);
-    const int writeresult = stream->write(stream, buffer, smallsize);
+    const int writeresult = bz2_write(stream, buffer, smallsize);
     if (writeresult == -1)
     {
       return -1;
@@ -308,12 +317,12 @@ static int bsdiff_internal(const struct bsdiff_request req)
   uint8_t* buffer;
   uint8_t buf[8 * 3];
 
-  if ((V = req.stream->malloc((req.oldsize + 1) * sizeof(int64_t))) == NULL)
+  if ((V = malloc((req.oldsize + 1) * sizeof(int64_t))) == NULL)
     return -1;
   I = req.I;
 
   qsufsort(I, V, req.old, req.oldsize);
-  req.stream->free(V);
+  free(V);
 
   buffer = req.buffer;
 
@@ -330,8 +339,7 @@ static int bsdiff_internal(const struct bsdiff_request req)
 
     for (scsc = scan += len; scan < req.newsize; scan++)
     {
-      len = search(I, req.old, req.oldsize, req.new + scan, req.newsize - scan,
-                   0, req.oldsize, &pos);
+      len = search(I, req.old, req.oldsize, req.new + scan, req.newsize - scan, 0, req.oldsize, &pos);
 
       for (; scsc < scan + len; scsc++)
         if ((scsc + lastoffset < req.oldsize) && (req.old[scsc + lastoffset] == req.new[scsc]))
@@ -342,7 +350,7 @@ static int bsdiff_internal(const struct bsdiff_request req)
 
       if ((scan + lastoffset < req.oldsize) && (req.old[scan + lastoffset] == req.new[scan]))
         oldscore--;
-    };
+    }
 
     if ((len != oldscore) || (scan == req.newsize))
     {
@@ -358,8 +366,8 @@ static int bsdiff_internal(const struct bsdiff_request req)
         {
           Sf = s;
           lenf = i;
-        };
-      };
+        }
+      }
 
       lenb = 0;
       if (scan < req.newsize)
@@ -374,9 +382,9 @@ static int bsdiff_internal(const struct bsdiff_request req)
           {
             Sb = s;
             lenb = i;
-          };
-        };
-      };
+          }
+        }
+      }
 
       if (lastscan + lenf > scan - lenb)
       {
@@ -394,12 +402,12 @@ static int bsdiff_internal(const struct bsdiff_request req)
           {
             Ss = s;
             lens = i + 1;
-          };
-        };
+          }
+        }
 
         lenf += lens - overlap;
         lenb -= lens;
-      };
+      }
 
       offtout(lenf, buf);
       offtout((scan - lenb) - (lastscan + lenf), buf + 8);
@@ -424,8 +432,8 @@ static int bsdiff_internal(const struct bsdiff_request req)
       lastscan = scan - lenb;
       lastpos = pos - lenb;
       lastoffset = pos - scan;
-    };
-  };
+    }
+  }
 
   return 0;
 }
@@ -435,12 +443,12 @@ int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t news
   int result;
   struct bsdiff_request req;
 
-  if ((req.I = stream->malloc((oldsize + 1) * sizeof(int64_t))) == NULL)
+  if ((req.I = malloc((oldsize + 1) * sizeof(int64_t))) == NULL)
     return -1;
 
-  if ((req.buffer = stream->malloc(newsize + 1)) == NULL)
+  if ((req.buffer = malloc(newsize + 1)) == NULL)
   {
-    stream->free(req.I);
+    free(req.I);
     return -1;
   }
 
@@ -452,22 +460,11 @@ int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t news
 
   result = bsdiff_internal(req);
 
-  stream->free(req.buffer);
-  stream->free(req.I);
+  free(req.buffer);
+  free(req.I);
 
   return result;
 }
-
-#if defined(BSDIFF_EXECUTABLE)
-
-#include <sys/types.h>
-
-#include <bzlib.h>
-#include <err.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 
 static int bz2_write(struct bsdiff_stream* stream, const void* buffer, int size)
 {
@@ -482,57 +479,87 @@ static int bz2_write(struct bsdiff_stream* stream, const void* buffer, int size)
   return 0;
 }
 
-int main(int argc, char* argv[])
+uint8_t* loadFile(const char* path, uint64_t* size)
 {
-  int fd;
-  int bz2err;
-  uint8_t *old, *new;
-  off_t oldsize, newsize;
-  uint8_t buf[8];
-  FILE* pf;
-  struct bsdiff_stream stream;
-  BZFILE* bz2;
+  int fd = open (path, O_RDONLY, 0);
+  uint8_t* content = NULL;
 
-  memset(&bz2, 0, sizeof(bz2));
-  stream.malloc = malloc;
-  stream.free = free;
-  stream.write = bz2_write;
+  if (fd >= 0)
+  {
+    // Check size
+    off_t fileSize = lseek (fd, 0, SEEK_END);
+    if (fileSize != -1)
+    {
+      *size = fileSize;
+      // Allocate size + 1 bytes to ensure that we
+      // never try to malloc(0) and get a NULL pointer
+      content = malloc(*size + 1);
+      if (content != NULL)
+      {
+         // Get back to the start of the file
+        int status = lseek (fd, 0, SEEK_SET);
+        if (status == 0)
+          *size = read (fd, content, *size); // Copy the file
+      }
+    }
+    close (fd);
+  }
 
-  if (argc != 4)
-    errx(1, "usage: %s oldfile newfile patchfile\n", argv[0]);
+  if (content == NULL)
+    err(1, "Could not read %s", path);
 
-  /* Allocate oldsize+1 bytes instead of oldsize bytes to ensure
-     that we never try to malloc(0) and get a NULL pointer */
-  if (((fd = open(argv[1], O_RDONLY, 0)) < 0) || ((oldsize = lseek(fd, 0, SEEK_END)) == -1) || ((old = malloc(oldsize + 1)) == NULL) || (lseek(fd, 0, SEEK_SET) != 0) || (read(fd, old, oldsize) != oldsize) || (close(fd) == -1))
-    err(1, "%s", argv[1]);
+  return content;
+}
 
-  /* Allocate newsize+1 bytes instead of newsize bytes to ensure
-     that we never try to malloc(0) and get a NULL pointer */
-  if (((fd = open(argv[2], O_RDONLY, 0)) < 0) || ((newsize = lseek(fd, 0, SEEK_END)) == -1) || ((new = malloc(newsize + 1)) == NULL) || (lseek(fd, 0, SEEK_SET) != 0) || (read(fd, new, newsize) != newsize) || (close(fd) == -1))
-    err(1, "%s", argv[2]);
+FILE* prepareOutput(const char* path, uint64_t newSize)
+{
+  // Create the patch file
+  FILE* f = fopen(path, "w");
+  if (f  == NULL)
+    err(1, "Could not create the output file %s", path);
 
-  /* Create the patch file */
-  if ((pf = fopen(argv[3], "w")) == NULL)
-    err(1, "%s", argv[3]);
-
-  /* Write header (signature+newsize)*/
-  offtout(newsize, buf);
-  if (fwrite("ENDSLEY/BSDIFF43", 16, 1, pf) != 1 || fwrite(buf, sizeof(buf), 1, pf) != 1)
+  // Write header (signature + newsize)
+  int status = fwrite("ENDSLEY/BSDIFF43", 16, 1, f);
+  if (status == 1)
+  {
+    // The size of the "new" file must be stored with big endian.
+    uint8_t buf[8];
+    offtout(newSize, buf);
+    status = fwrite(buf, sizeof(buf), 1, f);
+  }
+  if (status != 1)
     err(1, "Failed to write header");
 
-  if (NULL == (bz2 = BZ2_bzWriteOpen(&bz2err, pf, 9, 0, 0)))
-    errx(1, "BZ2_bzWriteOpen, bz2err=%d", bz2err);
+  return f;
+}
 
+int main(int argc, char* argv[])
+{
+  if (argc != 4)
+    err(1, "Usage: %s <oldfile> <newfile> <patchfile>\n", argv[0]);
+
+  uint64_t oldSize, newSize;
+  uint8_t *old = loadFile(argv[1], &oldSize);
+  uint8_t *new = loadFile(argv[2], &newSize);
+
+  FILE *outFile = prepareOutput(argv[3], newSize);
+
+  int bz2err;
+  BZFILE* bz2 = BZ2_bzWriteOpen(&bz2err, outFile, 9, 0, 0);
+  if (bz2 == NULL)
+    errx(1, "BZ2_bzWriteOpen, bz2err = %d", bz2err);
+
+  struct bsdiff_stream stream;
   stream.opaque = bz2;
-  if (bsdiff(old, oldsize, new, newsize, &stream))
+  int fail = bsdiff(old, oldSize, new, newSize, &stream);
+  if (fail)
     err(1, "bsdiff");
 
   BZ2_bzWriteClose(&bz2err, bz2, 0, NULL, NULL);
   if (bz2err != BZ_OK)
     err(1, "BZ2_bzWriteClose, bz2err=%d", bz2err);
 
-  if (fclose(pf))
-    err(1, "fclose");
+  fclose(outFile);
 
   /* Free the memory we used */
   free(old);
@@ -540,5 +567,3 @@ int main(int argc, char* argv[])
 
   return 0;
 }
-
-#endif
