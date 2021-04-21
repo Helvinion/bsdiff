@@ -40,7 +40,7 @@
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
-static int bz2_write(struct bsdiff_stream* stream, const void* buffer, int size);
+static int bz2_write(BZFILE* bz2, const void* buffer, int size);
 
 static void split(int64_t* I, int64_t* V, int64_t start, int64_t len, int64_t h)
 {
@@ -273,14 +273,14 @@ static void offtout(int64_t x, uint8_t* buf)
     buf[7] |= 0x80;
 }
 
-static int64_t writedata(struct bsdiff_stream* stream, const void* buffer, int64_t length)
+static int64_t writedata(BZFILE* bz2, const void* buffer, int64_t length)
 {
   int64_t result = 0;
 
   while (length > 0)
   {
     const int smallsize = (int)MIN(length, INT_MAX);
-    const int writeresult = bz2_write(stream, buffer, smallsize);
+    const int writeresult = bz2_write(bz2, buffer, smallsize);
     if (writeresult == -1)
     {
       return -1;
@@ -300,7 +300,7 @@ struct bsdiff_request
   int64_t oldsize;
   const uint8_t* new;
   int64_t newsize;
-  struct bsdiff_stream* stream;
+  BZFILE* bz2;
   int64_t* I;
   uint8_t* buffer;
 };
@@ -414,19 +414,19 @@ static int bsdiff_internal(const struct bsdiff_request req)
       offtout((pos - lenb) - (lastpos + lenf), buf + 16);
 
       /* Write control data */
-      if (writedata(req.stream, buf, sizeof(buf)))
+      if (writedata(req.bz2, buf, sizeof(buf)))
         return -1;
 
       /* Write diff data */
       for (i = 0; i < lenf; i++)
         buffer[i] = req.new[lastscan + i] - req.old[lastpos + i];
-      if (writedata(req.stream, buffer, lenf))
+      if (writedata(req.bz2, buffer, lenf))
         return -1;
 
       /* Write extra data */
       for (i = 0; i < (scan - lenb) - (lastscan + lenf); i++)
         buffer[i] = req.new[lastscan + lenf + i];
-      if (writedata(req.stream, buffer, (scan - lenb) - (lastscan + lenf)))
+      if (writedata(req.bz2, buffer, (scan - lenb) - (lastscan + lenf)))
         return -1;
 
       lastscan = scan - lenb;
@@ -438,7 +438,7 @@ static int bsdiff_internal(const struct bsdiff_request req)
   return 0;
 }
 
-int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t newsize, struct bsdiff_stream* stream)
+int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t newsize, BZFILE* bz2)
 {
   int result;
   struct bsdiff_request req;
@@ -456,7 +456,7 @@ int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t news
   req.oldsize = oldsize;
   req.new = new;
   req.newsize = newsize;
-  req.stream = stream;
+  req.bz2 = bz2;
 
   result = bsdiff_internal(req);
 
@@ -466,12 +466,10 @@ int bsdiff(const uint8_t* old, int64_t oldsize, const uint8_t* new, int64_t news
   return result;
 }
 
-static int bz2_write(struct bsdiff_stream* stream, const void* buffer, int size)
+static int bz2_write(BZFILE* bz2, const void* buffer, int size)
 {
   int bz2err;
-  BZFILE* bz2;
 
-  bz2 = (BZFILE*)stream->opaque;
   BZ2_bzWrite(&bz2err, bz2, (void*)buffer, size);
   if (bz2err != BZ_STREAM_END && bz2err != BZ_OK)
     return -1;
@@ -549,9 +547,7 @@ int main(int argc, char* argv[])
   if (bz2 == NULL)
     errx(1, "BZ2_bzWriteOpen, bz2err = %d", bz2err);
 
-  struct bsdiff_stream stream;
-  stream.opaque = bz2;
-  int fail = bsdiff(old, oldSize, new, newSize, &stream);
+  int fail = bsdiff(old, oldSize, new, newSize, bz2);
   if (fail)
     err(1, "bsdiff");
 
