@@ -1,0 +1,21 @@
+#include <cstdint>
+#include <utility>
+
+class QSufSort
+{
+public:
+private:
+  typedef std::pair<int64_t, int64_t> PairOfInt;
+
+  int64_t   sortLowestValue(int64_t* subV, int64_t* subI, int64_t limit);
+  void      splitEasy(int64_t start, int64_t len, int64_t h);
+  PairOfInt countLowerAndEqual(int64_t* subV, int64_t* subI, int64_t len, int64_t x);
+  void      applyPivot(int64_t* subV, int64_t* subI, const PairOfInt& leCounts, int64_t pivot);
+
+  void      split(int64_t start, int64_t len, int64_t h);
+
+private:
+  int64_t* I;
+  int64_t* V;
+};
+
