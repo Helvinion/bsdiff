@@ -49,7 +49,7 @@ static void split(int64_t* I, int64_t* V, int64_t start, int64_t len, int64_t h)
   if (len < 16)
   {
     for (k = start; k < start + len; k += j)
-    {
+      {
       j = 1;
       x = V[I[k] + h];
       for (i = 1; k + i < start + len; i++)
@@ -191,7 +191,7 @@ static int qsufsort(int64_t* I, const uint8_t* old, int64_t oldsize)
   // buckets = {0, 1, 2, 2, 4, 5, 5, 6, 6, 8}, back to step #2 :)
 
   // #5 Fill V with the amout of occurences of each byte of *old*
-  // and there predecessors (that's a lot of duplication)
+  // and their predecessors (that's a lot of duplication)
   for (i = 0; i < oldsize; i++)
     V[i] = buckets[old[i]];
   V[oldsize] = 0;
@@ -201,7 +201,6 @@ static int qsufsort(int64_t* I, const uint8_t* old, int64_t oldsize)
   // in *old*, put (-1) in I at its index.
   for (i = 1; i < 256; i++)
   {
-    
     if (buckets[i] == buckets[i - 1] + 1)
       I[buckets[i]] = -1;
   }

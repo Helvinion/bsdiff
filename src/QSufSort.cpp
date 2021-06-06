@@ -7,6 +7,18 @@ static void swap(int64_t& a, int64_t& b)
   b = tmp;
 }
 
+QSufSort::QSufSort()
+  : I (nullptr)
+  , V (nullptr)
+{
+}
+
+QSufSort::~QSufSort()
+{
+  delete[] I;
+  delete[] V;
+}
+
 // Put all the occurences of the lowest value of the array on its left side and returns its number of occurence
 int64_t QSufSort::sortLowestValue(int64_t* subV, int64_t* subI, int64_t limit)
 {
@@ -49,7 +61,6 @@ void QSufSort::splitEasy(int64_t start, int64_t len, int64_t h)
     // For each occurence of the lowest value of the array, apply the "unidentified special treatment" 
     for (int64_t i = 0; i < j; i++)
       V[subI[k + i]] = start + k + j - 1;
-
     if (j == 1)
       subI[k] = -1;
   }
@@ -144,4 +155,89 @@ void QSufSort::split(int64_t start, int64_t len, int64_t h)
   // Recursion over the higher values
   if (len > leCounts.first + leCounts.second)
     split(start + leCounts.first + leCounts.second, len - leCounts.first - leCounts.second, h);
+}
+
+void fillCounters(const uint8_t* array, int64_t size, int64_t* combinedCounters)
+{
+  // Count the number of occurences of each possible byte
+  // There are 256 possible bytes.
+  // TODO : think about a bucket with 256 * 256 possible values
+  int64_t counters[256] = {0};
+  for (int64_t i = 0; i < size; i++)
+    counters[array[i]]++;
+
+  // Each byte of combinedCounters gives the number of elements in the array
+  // that are strictly lower than its index.
+  for (int64_t i = 1; i < 256; i++)
+    combinedCounters[i] = combinedCounters[i - 1] + counters[i - 1];
+}
+
+void fillIandV(const uint8_t* array, int64_t size)
+{
+  int64_t combinedCounters[256] = {0};
+  fillCounters(array, size, combinedCounters);
+
+  // Huge allocation.
+  // TODO : think about using int32_t, for memory usage optimisation
+  I = new int64_t[size + 1];
+  V = new int64_t[size + 1];
+
+  // I contains the index of each byte of the array in order to sort it.
+  // V contains the index in I where each byte of the array has been put.
+  // It means that V[I[i]] = i, for the moment.
+  // combinedCounters is shifted one step to the left in this operation. Trust me.
+  // It means that each byte of combinedCounters gives the number of elements in the array
+  // that are lower *or equal* than its index.
+  V[size] = 0;
+  for (int64_t i = 0; i < size; i++)
+  {
+    uint64_t& index = combinedCounters[array[i]];
+    index++;
+    I[index] = i;
+    V[i] = index;
+  }
+
+  // In the (few) cases where a specific byte appears only once,
+  // put (-1) at its location in I. We can still get its position in combinedCounters.
+  for (int64_t i = 1; i < 256; i++)
+  {
+    if (combinedCounters[i] - combinedCounters[i - 1] == 1)
+      I[combinedCounters[i]] = -1;
+  }
+  I[0] = -1; // Remember that I[0] is just a placeholder and that it does not contain any index.
+}
+
+void sort(const uint8_t* array, int64_t size);
+{
+  fillIandV(array, size, combinedCounters);
+
+  for (int64_t h = 1; I[0] != -(size + 1); h *= 2)
+  {
+    // h = 1, 2, 4, 8, 16, 32...
+    int64_t len = 0;
+    int64_t i = 0;
+
+    while (i < size + 1)
+    {
+      if (I[i] < 0)
+      {
+        len += -I[i];
+        i += -I[i];
+      }
+      else
+      {
+        if (len)
+          I[i - len] = -len;
+        len = V[I[i]] + 1 - i;
+        split(i, len, h);
+        i += len;
+        len = 0;
+      }
+    }
+    if (len)
+      I[i - len] = -len;
+  }
+
+  for (i = 0; i < oldsize + 1; i++)
+    I[V[i]] = i;
 }

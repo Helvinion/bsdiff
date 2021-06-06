@@ -4,6 +4,10 @@
 class QSufSort
 {
 public:
+  QSufSort();
+  ~QSufSort();
+
+  void sort(const uint8_t* array, int64_t size);
 private:
   typedef std::pair<int64_t, int64_t> PairOfInt;
 
